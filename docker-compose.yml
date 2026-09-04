@@ -1,0 +1,48 @@
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+  backend:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://recoverx:recoverx@postgres:5432/recoverx
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+  worker:
+    build: ./backend
+    command: python -m app.workflows.temporal_worker
+    environment:
+      DATABASE_URL: postgresql://recoverx:recoverx@postgres:5432/recoverx
+      REDIS_URL: redis://redis:6379
+      TEMPORAL_ENABLED: "true"
+      TEMPORAL_HOST: temporal:7233
+    depends_on:
+      - backend
+      - temporal
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: recoverx
+      POSTGRES_USER: recoverx
+      POSTGRES_PASSWORD: recoverx
+    ports:
+      - "5432:5432"
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+  temporal:
+    image: temporalio/auto-setup: latest
+    environment:
+      DB: sqlite
+    ports:
+      - "7233:7233"

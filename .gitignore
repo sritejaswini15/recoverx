@@ -1,0 +1,20 @@
+# Local development and test state
+*.db
+*.db-shm
+*.db-wal
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Python tooling
+__pycache__/
+.pytest_cache/
+.venv/
+*.py[cod]
+
+# Frontend tooling
+frontend/node_modules/
+frontend/.next/
+frontend/test-results/
+frontend/playwright-report/
