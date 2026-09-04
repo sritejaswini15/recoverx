@@ -51,10 +51,12 @@ services:
           type: redis
           name: recoverx-redis
           property: connectionString
+      # IMPORTANT: After first deploy, replace the placeholder URLs with your actual Render-assigned URLs.
+      # Go to Render Dashboard → each service → Settings → Environment to update these values.
       - key: CORS_ORIGINS
-        value: "https://recoverx-frontend-XXXX.onrender.com"
+        value: "https://recoverx-frontend.onrender.com"
       - key: NEXT_PUBLIC_API_URL
-        value: "https://recoverx-api-XXXX.onrender.com"
+        value: "https://recoverx-api.onrender.com"
 
   # Frontend service
   - type: web
@@ -66,8 +68,9 @@ services:
     buildCommand: npm run build
     startCommand: npm run start
     envVars:
+      # IMPORTANT: Set this to the actual Render API service URL after first deploy.
       - key: NEXT_PUBLIC_API_URL
-        value: "https://recoverx-api-XXXX.onrender.com"
+        value: "https://recoverx-api.onrender.com"
 
   # Background worker for async tasks (optional - set TEMPORAL_ENABLED=true to enable)
   - type: background_worker

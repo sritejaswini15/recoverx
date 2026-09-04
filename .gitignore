@@ -18,3 +18,10 @@ frontend/node_modules/
 frontend/.next/
 frontend/test-results/
 frontend/playwright-report/
+
+# Test and local databases
+backend/recoverx-test-*.db
+backend/recoverx.db
+
+# Scripts directory (canonical versions are in backend/scripts/)
+scripts/

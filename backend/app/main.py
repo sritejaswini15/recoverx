@@ -2,6 +2,7 @@
 AI Revenue Recovery Control Plane for Razorpay merchants.
 Authoritative REST APIs, Webhook pipeline, Simulation center, and MCP interface.
 """
+from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import hmac
@@ -52,10 +53,37 @@ from app.services.tool_gateway import default_gateway
 from app.simulation.generator import generate_synthetic_dataset
 from app.workflows import workflow_runner
 
+@asynccontextmanager
+async def lifespan(application: FastAPI):  # noqa: ARG001
+    settings.validate_production()
+    # Schema changes are applied by Alembic in the production container.  The
+    # metadata helper remains a developer/test convenience only.
+    if settings.ENVIRONMENT.lower() != "production":
+        init_db()
+    session = next(get_session())
+    try:
+        if settings.BOOTSTRAP_ADMIN_EMAIL:
+            admin = session.scalar(select(User).where(User.email == settings.BOOTSTRAP_ADMIN_EMAIL.lower()))
+            if not admin:
+                org = session.scalar(select(Organization).limit(1))
+                if not org:
+                    org = Organization(name=settings.BOOTSTRAP_ORGANIZATION_NAME, razorpay_account_id=settings.BOOTSTRAP_RAZORPAY_ACCOUNT_ID)
+                    session.add(org)
+                    session.flush()
+                session.add(User(organization_id=org.id, email=settings.BOOTSTRAP_ADMIN_EMAIL.lower(), name="Bootstrap Administrator", role="ADMIN", password_hash=hash_password(settings.BOOTSTRAP_ADMIN_PASSWORD or "")))
+                session.commit()
+        if settings.SEED_DEMO_DATA and session.scalar(select(func.count(Customer.id))) == 0:
+            generate_synthetic_dataset(session, customer_count=1000, case_count=500, seed=20260902)
+    finally:
+        session.close()
+    yield
+
+
 app = FastAPI(
     title="RecoverX API",
     description="AI Revenue Recovery Control Plane for Razorpay merchants",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 app.add_middleware(
@@ -251,31 +279,8 @@ def serialize_customer(customer: Customer) -> dict[str, Any]:
     }
 
 
-# --- Lifespan & Health ---
 
-@app.on_event("startup")
-def startup() -> None:
-    settings.validate_production()
-    # Schema changes are applied by Alembic in the production container.  The
-    # metadata helper remains a developer/test convenience only.
-    if settings.ENVIRONMENT.lower() != "production":
-        init_db()
-    session = next(get_session())
-    try:
-        if settings.BOOTSTRAP_ADMIN_EMAIL:
-            admin = session.scalar(select(User).where(User.email == settings.BOOTSTRAP_ADMIN_EMAIL.lower()))
-            if not admin:
-                org = session.scalar(select(Organization).limit(1))
-                if not org:
-                    org = Organization(name=settings.BOOTSTRAP_ORGANIZATION_NAME, razorpay_account_id=settings.BOOTSTRAP_RAZORPAY_ACCOUNT_ID)
-                    session.add(org)
-                    session.flush()
-                session.add(User(organization_id=org.id, email=settings.BOOTSTRAP_ADMIN_EMAIL.lower(), name="Bootstrap Administrator", role="ADMIN", password_hash=hash_password(settings.BOOTSTRAP_ADMIN_PASSWORD or "")))
-                session.commit()
-        if settings.SEED_DEMO_DATA and session.scalar(select(func.count(Customer.id))) == 0:
-            generate_synthetic_dataset(session, customer_count=1000, case_count=500, seed=20260902)
-    finally:
-        session.close()
+# --- Lifespan & Health ---
 
 
 @app.get("/health")
