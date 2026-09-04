@@ -604,9 +604,11 @@ def test_bootstrap_admin_login_and_sync(live_client):
     token = resp_new.json()["access_token"]
     assert token
 
-    # 4. Whitespace and case-insensitivity tolerance
+    # 4. Whitespace, quoted credentials, and case-insensitivity tolerance
     resp_space = live_client.post("/auth/login", json={"email": f"  {email.upper()}  ", "password": f"  {updated_pwd}  "})
     assert resp_space.status_code == 200
+    resp_quote = live_client.post("/auth/login", json={"email": f'"{email}"', "password": f'"{updated_pwd}"'})
+    assert resp_quote.status_code == 200
 
     # 5. Authenticated protected route access
     resp_cases = live_client.get("/recovery-cases", headers={"Authorization": f"Bearer {token}"})

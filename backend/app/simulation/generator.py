@@ -3,10 +3,11 @@ Generates 1,000+ realistic customers, historical payments, invoices, subscriptio
 checkout attempts, and 500 coherent recovery cases.
 """
 from datetime import datetime, timezone, timedelta
+import os
 import random
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db import (
@@ -125,12 +126,14 @@ def generate_synthetic_dataset(
         ("OPERATOR", "operator@recoverx.local", "Recovery Operator"),
         ("VIEWER", "viewer@recoverx.local", "Recovery Viewer"),
     ]
-    bootstrap_email = (settings.BOOTSTRAP_ADMIN_EMAIL or "").strip().lower()
-    bootstrap_pwd = (settings.BOOTSTRAP_ADMIN_PASSWORD or "").strip()
+    bootstrap_raw_email = os.getenv("BOOTSTRAP_ADMIN_EMAIL") or settings.BOOTSTRAP_ADMIN_EMAIL or ""
+    bootstrap_email = bootstrap_raw_email.strip().lower().strip("\"'")
+    bootstrap_raw_pwd = os.getenv("BOOTSTRAP_ADMIN_PASSWORD") or settings.BOOTSTRAP_ADMIN_PASSWORD or ""
+    bootstrap_pwd = bootstrap_raw_pwd.strip().strip("\"'")
 
     for role, email, name in users_data:
-        norm_email = email.strip().lower()
-        existing = session.scalar(select(User).where(User.email == norm_email))
+        norm_email = email.strip().lower().strip("\"'")
+        existing = session.scalar(select(User).where(func.lower(User.email) == norm_email))
         if existing:
             continue
 

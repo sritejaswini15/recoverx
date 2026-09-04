@@ -62,11 +62,24 @@ async def lifespan(application: FastAPI):  # noqa: ARG001
         init_db()
     session = next(get_session())
     try:
-        if settings.BOOTSTRAP_ADMIN_EMAIL:
-            admin_email = settings.BOOTSTRAP_ADMIN_EMAIL.strip().lower()
-            admin_pwd = (settings.BOOTSTRAP_ADMIN_PASSWORD or "").strip()
-            admin = session.scalar(select(User).where(User.email == admin_email))
+        raw_email = os.getenv("BOOTSTRAP_ADMIN_EMAIL") or settings.BOOTSTRAP_ADMIN_EMAIL or "admin@recoverx.local"
+        admin_email = raw_email.strip().lower().strip("\"'")
+        raw_pwd = os.getenv("BOOTSTRAP_ADMIN_PASSWORD") or settings.BOOTSTRAP_ADMIN_PASSWORD or ""
+        admin_pwd = raw_pwd.strip().strip("\"'")
+
+        if admin_email:
+            admin = session.scalar(select(User).where(func.lower(User.email) == admin_email))
             if not admin:
+                # In case an admin user was created with a slightly different email casing or format
+                admin = session.scalar(select(User).where(User.role == "ADMIN"))
+
+            if admin:
+                admin.email = admin_email
+                admin.role = "ADMIN"
+                if admin_pwd and not (verify_password(admin_pwd, admin.password_hash) or (raw_pwd.strip() and verify_password(raw_pwd.strip(), admin.password_hash))):
+                    admin.password_hash = hash_password(admin_pwd)
+                session.commit()
+            else:
                 org = session.scalar(select(Organization).limit(1))
                 if not org:
                     org = Organization(name=settings.BOOTSTRAP_ORGANIZATION_NAME, razorpay_account_id=settings.BOOTSTRAP_RAZORPAY_ACCOUNT_ID)
@@ -79,12 +92,6 @@ async def lifespan(application: FastAPI):  # noqa: ARG001
                     role="ADMIN",
                     password_hash=hash_password(admin_pwd) if admin_pwd else None
                 ))
-                session.commit()
-            elif admin_pwd and not verify_password(admin_pwd, admin.password_hash):
-                # Ensure the Railway/environment-configured bootstrap credentials remain valid
-                # if the environment variable was updated or if an earlier run created a stale hash.
-                admin.password_hash = hash_password(admin_pwd)
-                admin.role = "ADMIN"
                 session.commit()
         if settings.SEED_DEMO_DATA and session.scalar(select(func.count(Customer.id))) == 0:
             generate_synthetic_dataset(session, customer_count=1000, case_count=500, seed=20260902)
@@ -381,14 +388,27 @@ def integrations_status(_user: User = Depends(current_user)) -> dict[str, Any]:
 
 @app.post("/auth/login", responses={401: {"description": "Invalid credentials"}})
 def login(payload: LoginPayload, session: Session = Depends(get_session)) -> dict[str, Any]:
-    clean_email = payload.email.strip().lower()
+    clean_email = payload.email.strip().lower().strip("\"'")
     clean_password = payload.password.strip()
+    unquoted_password = clean_password.strip("\"'")
     now = utc_now()
     attempts = [item for item in _login_attempts.get(clean_email, []) if item > now - timedelta(minutes=15)]
     if len(attempts) >= 5:
         raise HTTPException(status_code=429, detail="Too many login attempts; try again later")
-    user = session.scalar(select(User).where(User.email == clean_email))
-    if not user or not verify_password(clean_password, user.password_hash):
+    user = session.scalar(select(User).where(func.lower(User.email) == clean_email))
+    if not user:
+        configured_admin = (os.getenv("BOOTSTRAP_ADMIN_EMAIL") or settings.BOOTSTRAP_ADMIN_EMAIL or "admin@recoverx.local").strip().lower().strip("\"'")
+        if clean_email == configured_admin:
+            user = session.scalar(select(User).where(User.role == "ADMIN"))
+
+    pwd_valid = False
+    if user and user.password_hash:
+        pwd_valid = (
+            verify_password(clean_password, user.password_hash)
+            or (bool(unquoted_password) and verify_password(unquoted_password, user.password_hash))
+        )
+
+    if not user or not pwd_valid:
         _login_attempts[clean_email] = attempts + [now]
         raise HTTPException(status_code=401, detail="Invalid credentials")
     _login_attempts.pop(clean_email, None)
