@@ -20,6 +20,10 @@ export default function Home() {
   const [activity, setActivity] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  const [isAuthenticated] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return Boolean(window.localStorage.getItem("recoverx_access_token"));
+  });
   const visibleCases = showAll ? cases : cases.slice(0, 3);
   const escalationCount = cases.filter((c) => c.status === "ESCALATED").length;
 
@@ -60,6 +64,16 @@ export default function Home() {
     } catch { setNotice("Recovery scan failed. Check the API and retry."); }
   };
 
+  if (isAuthenticated === null || !isAuthenticated) {
+    return (
+      <main className="login-page">
+        <div className="loading-state" style={{ minWidth: 280, textAlign: "center" }}>
+          Authenticating RecoverX control plane...
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className="app-shell">
       <aside className="sidebar">
@@ -72,7 +86,16 @@ export default function Home() {
       </aside>
 
       <section className="content">
-        <header className="topbar"><div className="mobile-brand"><span className="brand-mark">R</span> recover<span className="brand-x">X</span></div><div className="breadcrumb">Revenue operations <span>/</span> {activeNav}</div><div className="top-actions"><button className="icon-button" aria-label="Search">⌕</button><button className="icon-button" aria-label="Notifications">♧<i /></button><div className="top-avatar">AS</div></div></header>
+        <header className="topbar">
+          <div className="mobile-brand"><span className="brand-mark">R</span> recover<span className="brand-x">X</span></div>
+          <div className="breadcrumb">Revenue operations <span>/</span> {activeNav}</div>
+          <div className="top-actions">
+            <button onClick={() => api.logout()} className="text-button" style={{ fontSize: "12px", color: "#647287" }}>
+              Sign out
+            </button>
+            <div className="top-avatar">RX</div>
+          </div>
+        </header>
         <div className="page-wrap">
           <div className="page-heading"><div><p className="eyebrow">LIVE RECOVERX CONTROL PLANE · {analytics?.mode.toUpperCase() ?? "CONNECTING"} MODE</p><h1>{activeNav === "Command center" ? "Good morning, Ananya" : activeNav}</h1><p className="subheading">Here&apos;s what&apos;s happening with your revenue recovery today.</p></div><div className="heading-actions"><select value={period} onChange={(event) => setPeriod(event.target.value)} aria-label="Time period"><option>Last 30 days</option><option>Last 7 days</option><option>Last 90 days</option></select><button className="primary-button" onClick={runScan} disabled={loading}>＋ Run recovery scan</button></div></div>
 
@@ -120,11 +143,16 @@ function UserChip() {
   const av = name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
   return (
     <div className="sidebar-bottom">
-      <button className="nav-item"><span className="nav-icon">?</span>Help center</button>
       <div className="user-chip">
         <span className="user-avatar">{av}</span>
         <span><b>{name}</b><small>{role}</small></span>
-        <span className="more">•••</span>
+        <button
+          onClick={() => api.logout()}
+          style={{ marginLeft: "auto", background: "none", border: 0, color: "#ef725d", fontSize: "11px", fontWeight: 600 }}
+          title="Sign out"
+        >
+          Sign out
+        </button>
       </div>
     </div>
   );

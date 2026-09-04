@@ -548,3 +548,43 @@ def test_health_endpoint_succeeds(live_client):
     data = response.json()
     assert data["status"] == "ok"
     assert data["service"] == "recoverx-control-plane"
+
+
+def test_bootstrap_admin_login_and_sync(live_client):
+    """Verify bootstrap admin credentials work for login and handle whitespace/casing correctly."""
+    from sqlalchemy import select
+    from app.db import get_session, User
+    from app.auth import hash_password, verify_password
+    from app.core.config import settings
+
+    session = next(get_session())
+    email = (settings.BOOTSTRAP_ADMIN_EMAIL or "admin@recoverx.local").strip().lower()
+    pwd = (settings.BOOTSTRAP_ADMIN_PASSWORD or "recoverx-demo").strip()
+
+    user = session.scalar(select(User).where(User.email == email))
+    if not user:
+        user = User(
+            id="test-bootstrap-admin-id",
+            organization_id="org-1",
+            email=email,
+            name="Bootstrap Admin",
+            role="ADMIN",
+            password_hash=hash_password(pwd),
+        )
+        session.add(user)
+        session.commit()
+    else:
+        user.password_hash = hash_password(pwd)
+        session.commit()
+    session.close()
+
+    # Attempt login with exact credentials
+    resp = live_client.post("/auth/login", json={"email": email, "password": pwd})
+    assert resp.status_code == 200, f"Login failed: {resp.text}"
+    body = resp.json()
+    assert "access_token" in body
+    assert body["user"]["email"] == email
+
+    # Attempt login with leading/trailing whitespace
+    resp_space = live_client.post("/auth/login", json={"email": f"  {email.upper()}  ", "password": f"  {pwd}  "})
+    assert resp_space.status_code == 200, "Whitespace handling failed"

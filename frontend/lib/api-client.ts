@@ -158,6 +158,19 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   login: (email: string, password: string) => request<{ access_token: string; user: { name: string; email: string; role: string } }>("/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) }),
+  logout: async () => {
+    try {
+      await request<void>("/auth/logout", { method: "POST" });
+    } catch {
+      // Ignore network errors on logout
+    } finally {
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("recoverx_access_token");
+        window.localStorage.removeItem("recoverx_user");
+        window.location.replace("/login");
+      }
+    }
+  },
   analytics: () => request<Analytics>("/analytics/recovery"),
   cases: (limit = 100) => request<{ items: RecoveryCase[]; total: number }>(`/recovery-cases?limit=${limit}`),
   customers: (limit = 100) => request<{ items: Customer[]; total: number }>(`/customers?limit=${limit}`),

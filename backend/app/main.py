@@ -63,14 +63,28 @@ async def lifespan(application: FastAPI):  # noqa: ARG001
     session = next(get_session())
     try:
         if settings.BOOTSTRAP_ADMIN_EMAIL:
-            admin = session.scalar(select(User).where(User.email == settings.BOOTSTRAP_ADMIN_EMAIL.lower()))
+            admin_email = settings.BOOTSTRAP_ADMIN_EMAIL.strip().lower()
+            admin = session.scalar(select(User).where(User.email == admin_email))
+            admin_pwd = (settings.BOOTSTRAP_ADMIN_PASSWORD or "").strip()
             if not admin:
                 org = session.scalar(select(Organization).limit(1))
                 if not org:
                     org = Organization(name=settings.BOOTSTRAP_ORGANIZATION_NAME, razorpay_account_id=settings.BOOTSTRAP_RAZORPAY_ACCOUNT_ID)
                     session.add(org)
                     session.flush()
-                session.add(User(organization_id=org.id, email=settings.BOOTSTRAP_ADMIN_EMAIL.lower(), name="Bootstrap Administrator", role="ADMIN", password_hash=hash_password(settings.BOOTSTRAP_ADMIN_PASSWORD or "")))
+                session.add(User(
+                    organization_id=org.id,
+                    email=admin_email,
+                    name="Bootstrap Administrator",
+                    role="ADMIN",
+                    password_hash=hash_password(admin_pwd)
+                ))
+                session.commit()
+            elif admin_pwd and not verify_password(admin_pwd, admin.password_hash):
+                # Ensure the Railway/environment-configured bootstrap credentials remain valid
+                # if the environment variable was updated or if an earlier run created a stale hash.
+                admin.password_hash = hash_password(admin_pwd)
+                admin.role = "ADMIN"
                 session.commit()
         if settings.SEED_DEMO_DATA and session.scalar(select(func.count(Customer.id))) == 0:
             generate_synthetic_dataset(session, customer_count=1000, case_count=500, seed=20260902)
@@ -367,15 +381,17 @@ def integrations_status(_user: User = Depends(current_user)) -> dict[str, Any]:
 
 @app.post("/auth/login", responses={401: {"description": "Invalid credentials"}})
 def login(payload: LoginPayload, session: Session = Depends(get_session)) -> dict[str, Any]:
+    clean_email = payload.email.strip().lower()
+    clean_password = payload.password.strip()
     now = utc_now()
-    attempts = [item for item in _login_attempts.get(payload.email.lower(), []) if item > now - timedelta(minutes=15)]
+    attempts = [item for item in _login_attempts.get(clean_email, []) if item > now - timedelta(minutes=15)]
     if len(attempts) >= 5:
         raise HTTPException(status_code=429, detail="Too many login attempts; try again later")
-    user = session.scalar(select(User).where(User.email == payload.email.lower()))
-    if not user or not verify_password(payload.password, user.password_hash):
-        _login_attempts[payload.email.lower()] = attempts + [now]
+    user = session.scalar(select(User).where(User.email == clean_email))
+    if not user or not verify_password(clean_password, user.password_hash):
+        _login_attempts[clean_email] = attempts + [now]
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    _login_attempts.pop(payload.email.lower(), None)
+    _login_attempts.pop(clean_email, None)
     token = issue_token(user, session)
     session.commit()
     return {
