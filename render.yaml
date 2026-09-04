@@ -1,3 +1,10 @@
+databases:
+  - name: recoverx-postgres
+    plan: starter
+    databaseName: recoverx
+    user: recoverx
+    ipAllowList: []
+
 services:
   # Primary API service
   - type: web
@@ -7,8 +14,9 @@ services:
     plan: starter
     healthCheckPath: /health
     healthCheckInterval: 10
-    numInstances: 2
+    numInstances: 1
     maxShutdownDelay: 30
+    preDeployCommand: alembic upgrade head
     envVars:
       - key: ENVIRONMENT
         value: production
@@ -48,15 +56,15 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: recoverx-redis
           property: connectionString
-      # IMPORTANT: After first deploy, replace the placeholder URLs with your actual Render-assigned URLs.
-      # Go to Render Dashboard → each service → Settings → Environment to update these values.
+      # Post-deployment: update CORS_ORIGINS with the actual assigned recoverx-frontend URL
       - key: CORS_ORIGINS
-        value: "https://recoverx-frontend.onrender.com"
+        value: "https://recoverx-frontend-placeholder.onrender.com"
+      # Post-deployment: update NEXT_PUBLIC_API_URL with the actual assigned recoverx-api URL
       - key: NEXT_PUBLIC_API_URL
-        value: "https://recoverx-api.onrender.com"
+        value: "https://recoverx-api-placeholder.onrender.com"
 
   # Frontend service
   - type: web
@@ -68,12 +76,12 @@ services:
     buildCommand: npm run build
     startCommand: npm run start
     envVars:
-      # IMPORTANT: Set this to the actual Render API service URL after first deploy.
+      # Post-deployment: update NEXT_PUBLIC_API_URL with the actual assigned recoverx-api URL
       - key: NEXT_PUBLIC_API_URL
-        value: "https://recoverx-api.onrender.com"
+        value: "https://recoverx-api-placeholder.onrender.com"
 
-  # Background worker for async tasks (optional - set TEMPORAL_ENABLED=true to enable)
-  - type: background_worker
+  # Background worker for async tasks (TEMPORAL_ENABLED=false for initial deployment)
+  - type: worker
     name: recoverx-worker
     runtime: docker
     rootDir: backend
@@ -97,33 +105,22 @@ services:
           property: connectionString
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: recoverx-redis
           property: connectionString
     startCommand: python -m app.workflows.temporal_worker
 
-  # Redis cache
-  - type: redis
+  # Redis / Key Value cache
+  - type: keyvalue
     name: recoverx-redis
     plan: starter
     ipAllowList: []
     maxmemoryPolicy: allkeys-lru
 
-  # PostgreSQL database using standard managed blueprint
-  - type: pserv
-    name: recoverx-postgres
-    plan: starter
-    databaseName: recoverx
-    databaseUser: recoverx
-    # postgreSQL version should be 13+
-    # Initialize with full UTF8 support
-    ipAllowList: []
-
-# Cron jobs for maintenance (optional)
-jobs:
+  # Cron job for daily maintenance
   - type: cron
     name: recoverx-cleanup
-    schedule: "0 2 * * *"  # 2 AM daily
+    schedule: "0 2 * * *"
     runtime: docker
     rootDir: backend
     startCommand: |
@@ -144,4 +141,3 @@ jobs:
         fromDatabase:
           name: recoverx-postgres
           property: connectionString
-
