@@ -13,9 +13,8 @@ services:
     rootDir: backend
     plan: starter
     healthCheckPath: /health
-    healthCheckInterval: 10
     numInstances: 1
-    maxShutdownDelay: 30
+    maxShutdownDelaySeconds: 30
     preDeployCommand: alembic upgrade head
     envVars:
       - key: ENVIRONMENT
@@ -59,10 +58,10 @@ services:
           type: keyvalue
           name: recoverx-redis
           property: connectionString
-      # Post-deployment: update CORS_ORIGINS with the actual assigned recoverx-frontend URL
+      # Post-deployment: replace with actual frontend Render URL
       - key: CORS_ORIGINS
         value: "https://recoverx-frontend-placeholder.onrender.com"
-      # Post-deployment: update NEXT_PUBLIC_API_URL with the actual assigned recoverx-api URL
+      # Post-deployment: replace with actual API Render URL
       - key: NEXT_PUBLIC_API_URL
         value: "https://recoverx-api-placeholder.onrender.com"
 
@@ -76,18 +75,19 @@ services:
     buildCommand: npm run build
     startCommand: npm run start
     envVars:
-      # Post-deployment: update NEXT_PUBLIC_API_URL with the actual assigned recoverx-api URL
+      # Post-deployment: replace with actual API Render URL
       - key: NEXT_PUBLIC_API_URL
         value: "https://recoverx-api-placeholder.onrender.com"
 
-  # Background worker for async tasks (TEMPORAL_ENABLED=false for initial deployment)
+  # Background worker
+  # TEMPORAL_ENABLED=false for initial deployment
   - type: worker
     name: recoverx-worker
     runtime: docker
     rootDir: backend
     plan: starter
     numInstances: 1
-    maxShutdownDelay: 30
+    maxShutdownDelaySeconds: 30
     envVars:
       - key: ENVIRONMENT
         value: production
