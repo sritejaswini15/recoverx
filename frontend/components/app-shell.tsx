@@ -27,7 +27,7 @@ export function AppShell({ children, title }: Readonly<{ children: React.ReactNo
     if (typeof window === "undefined") return null;
     try {
       const stored = window.localStorage.getItem("recoverx_user");
-      return stored ? JSON.parse(stored) as { name: string; role: string } : null;
+      return stored ? (JSON.parse(stored) as { name: string; role: string }) : null;
     } catch {
       return null;
     }
@@ -40,7 +40,7 @@ export function AppShell({ children, title }: Readonly<{ children: React.ReactNo
   }, [router]);
 
   // Guard against unauthenticated render flash
-  if (isAuthenticated === null || !isAuthenticated) {
+  if (!isAuthenticated) {
     return (
       <main className="login-page">
         <div className="loading-state" style={{ minWidth: 280, textAlign: "center" }}>

@@ -147,7 +147,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const response = await fetch(`${API_URL}${path}`, { ...init, headers, cache: "no-store" });
   if (!response.ok) {
-    if (response.status === 401 && typeof window !== "undefined") {
+    if (response.status === 401 && typeof window !== "undefined" && path !== "/auth/login") {
       window.localStorage.removeItem("recoverx_access_token");
       window.location.replace("/login");
     }

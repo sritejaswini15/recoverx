@@ -64,7 +64,7 @@ export default function Home() {
     } catch { setNotice("Recovery scan failed. Check the API and retry."); }
   };
 
-  if (isAuthenticated === null || !isAuthenticated) {
+  if (!isAuthenticated) {
     return (
       <main className="login-page">
         <div className="loading-state" style={{ minWidth: 280, textAlign: "center" }}>
@@ -143,9 +143,11 @@ function UserChip() {
   const av = name.split(" ").map((p) => p[0]).join("").slice(0, 2).toUpperCase();
   return (
     <div className="sidebar-bottom">
+      <button className="nav-item"><span className="nav-icon">?</span>Help center</button>
       <div className="user-chip">
         <span className="user-avatar">{av}</span>
         <span><b>{name}</b><small>{role}</small></span>
+        <span className="more">•••</span>
         <button
           onClick={() => api.logout()}
           style={{ marginLeft: "auto", background: "none", border: 0, color: "#ef725d", fontSize: "11px", fontWeight: 600 }}

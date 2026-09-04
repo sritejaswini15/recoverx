@@ -33,6 +33,7 @@ from app.db import (
     User,
 )
 from app.auth import hash_password
+from app.core.config import settings
 from app.services.risk_engine import RiskEngine
 from app.services.policy_engine import PolicyEngine
 
@@ -117,22 +118,35 @@ def generate_synthetic_dataset(
     session.add(policy)
     session.flush()
 
-    # 4. Create Standard RBAC Users
+    # 4. Create Standard RBAC Users (preserving existing bootstrap admin if present)
     users_data = [
         ("ADMIN", "admin@recoverx.local", "RecoverX Admin"),
         ("FINANCE_MANAGER", "finance@recoverx.local", "Finance Manager"),
         ("OPERATOR", "operator@recoverx.local", "Recovery Operator"),
         ("VIEWER", "viewer@recoverx.local", "Recovery Viewer"),
     ]
+    bootstrap_email = (settings.BOOTSTRAP_ADMIN_EMAIL or "").strip().lower()
+    bootstrap_pwd = (settings.BOOTSTRAP_ADMIN_PASSWORD or "").strip()
+
     for role, email, name in users_data:
+        norm_email = email.strip().lower()
+        existing = session.scalar(select(User).where(User.email == norm_email))
+        if existing:
+            continue
+
+        if role == "ADMIN" and norm_email == bootstrap_email and bootstrap_pwd:
+            pwd_hash = hash_password(bootstrap_pwd)
+        else:
+            pwd_hash = hash_password("recoverx-demo")
+
         session.add(
             User(
                 id=str(uuid4()),
                 organization_id=org.id,
-                email=email,
+                email=norm_email,
                 name=name,
                 role=role,
-                password_hash=hash_password("recoverx-demo"),
+                password_hash=pwd_hash,
             )
         )
     session.flush()

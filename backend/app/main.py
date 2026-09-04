@@ -64,8 +64,8 @@ async def lifespan(application: FastAPI):  # noqa: ARG001
     try:
         if settings.BOOTSTRAP_ADMIN_EMAIL:
             admin_email = settings.BOOTSTRAP_ADMIN_EMAIL.strip().lower()
-            admin = session.scalar(select(User).where(User.email == admin_email))
             admin_pwd = (settings.BOOTSTRAP_ADMIN_PASSWORD or "").strip()
+            admin = session.scalar(select(User).where(User.email == admin_email))
             if not admin:
                 org = session.scalar(select(Organization).limit(1))
                 if not org:
@@ -77,7 +77,7 @@ async def lifespan(application: FastAPI):  # noqa: ARG001
                     email=admin_email,
                     name="Bootstrap Administrator",
                     role="ADMIN",
-                    password_hash=hash_password(admin_pwd)
+                    password_hash=hash_password(admin_pwd) if admin_pwd else None
                 ))
                 session.commit()
             elif admin_pwd and not verify_password(admin_pwd, admin.password_hash):

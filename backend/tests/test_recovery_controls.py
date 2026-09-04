@@ -558,33 +558,68 @@ def test_bootstrap_admin_login_and_sync(live_client):
     from app.core.config import settings
 
     session = next(get_session())
-    email = (settings.BOOTSTRAP_ADMIN_EMAIL or "admin@recoverx.local").strip().lower()
-    pwd = (settings.BOOTSTRAP_ADMIN_PASSWORD or "recoverx-demo").strip()
+    email = "admin@recoverx.local"
+    initial_pwd = "initial-old-password"
+    updated_pwd = "new-secure-bootstrap-password-16char"
 
-    user = session.scalar(select(User).where(User.email == email))
-    if not user:
-        user = User(
+    # 1. Clean up / create initial admin with old password
+    existing = session.scalar(select(User).where(User.email == email))
+    if existing:
+        existing.password_hash = hash_password(initial_pwd)
+        session.commit()
+    else:
+        org = session.scalar(select(Organization).limit(1))
+        if not org:
+            org = Organization(id="org-bootstrap-test", name="Test Org", currency="INR", timezone="Asia/Kolkata")
+            session.add(org)
+            session.flush()
+        existing = User(
             id="test-bootstrap-admin-id",
-            organization_id="org-1",
+            organization_id=org.id,
             email=email,
             name="Bootstrap Admin",
             role="ADMIN",
-            password_hash=hash_password(pwd),
+            password_hash=hash_password(initial_pwd),
         )
-        session.add(user)
+        session.add(existing)
         session.commit()
-    else:
-        user.password_hash = hash_password(pwd)
+
+    # Verify old password works, new does not yet
+    resp_old = live_client.post("/auth/login", json={"email": email, "password": initial_pwd})
+    assert resp_old.status_code == 200
+    resp_bad = live_client.post("/auth/login", json={"email": email, "password": updated_pwd})
+    assert resp_bad.status_code == 401
+    assert resp_bad.json()["detail"] == "Invalid credentials"
+
+    # 2. Synchronize password for existing admin (simulating lifespan with new BOOTSTRAP_ADMIN_PASSWORD)
+    if not verify_password(updated_pwd, existing.password_hash):
+        existing.password_hash = hash_password(updated_pwd)
+        existing.role = "ADMIN"
         session.commit()
     session.close()
 
-    # Attempt login with exact credentials
-    resp = live_client.post("/auth/login", json={"email": email, "password": pwd})
-    assert resp.status_code == 200, f"Login failed: {resp.text}"
-    body = resp.json()
-    assert "access_token" in body
-    assert body["user"]["email"] == email
+    # 3. Login with updated configured credentials
+    resp_new = live_client.post("/auth/login", json={"email": email, "password": updated_pwd})
+    assert resp_new.status_code == 200
+    token = resp_new.json()["access_token"]
+    assert token
 
-    # Attempt login with leading/trailing whitespace
-    resp_space = live_client.post("/auth/login", json={"email": f"  {email.upper()}  ", "password": f"  {pwd}  "})
-    assert resp_space.status_code == 200, "Whitespace handling failed"
+    # 4. Whitespace and case-insensitivity tolerance
+    resp_space = live_client.post("/auth/login", json={"email": f"  {email.upper()}  ", "password": f"  {updated_pwd}  "})
+    assert resp_space.status_code == 200
+
+    # 5. Authenticated protected route access
+    resp_cases = live_client.get("/recovery-cases", headers={"Authorization": f"Bearer {token}"})
+    assert resp_cases.status_code == 200
+
+    # 6. Unauthenticated or invalid token rejection
+    resp_unauth = live_client.get("/recovery-cases", headers={"Authorization": "Bearer invalid-token"})
+    assert resp_unauth.status_code == 401
+
+    # 7. Logout & token revocation
+    resp_logout = live_client.post("/auth/logout", headers={"Authorization": f"Bearer {token}"})
+    assert resp_logout.status_code == 204
+
+    # 8. Verify revoked token is now rejected
+    resp_after_logout = live_client.get("/recovery-cases", headers={"Authorization": f"Bearer {token}"})
+    assert resp_after_logout.status_code == 401
