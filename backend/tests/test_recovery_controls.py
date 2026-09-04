@@ -503,3 +503,48 @@ def test_integrations_status_structure(live_client):
         assert entry["status"] in ("CONNECTED", "SIMULATED", "NOT_CONFIGURED")
         assert "label" in entry
         assert "detail" in entry
+
+
+# ─── Railway & PostgreSQL FK Regression Tests ─────────────────────────────────
+
+def test_synthetic_dataset_generator_enforces_foreign_keys():
+    """Verify generator succeeds when foreign keys are actively enforced (simulating PostgreSQL)."""
+    from sqlalchemy import create_engine, event, select, func
+    from sqlalchemy.orm import Session
+    from app.db import Base, RecoveryCase, ExperimentResult
+    from app.simulation.generator import generate_synthetic_dataset
+
+    engine = create_engine("sqlite:///:memory:")
+
+    @event.listens_for(engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
+    Base.metadata.create_all(engine)
+    session = Session(engine)
+
+    res = generate_synthetic_dataset(session, customer_count=50, case_count=20, seed=20260902)
+    assert res["cases"] == 20
+    assert res["customers"] == 50
+
+    # Ensure recovery cases were inserted and experiment_results properly reference them
+    cases_count = session.scalar(select(func.count(RecoveryCase.id)))
+    assert cases_count == 20
+    exp_results = session.scalars(select(ExperimentResult)).all()
+    assert len(exp_results) > 0
+    for er in exp_results:
+        assert er.case_id.startswith("RC-")
+        # Verify FK target actually exists in DB
+        case = session.get(RecoveryCase, er.case_id)
+        assert case is not None
+
+
+def test_health_endpoint_succeeds(live_client):
+    """Verify /health returns 200 OK with proper status when DB is available."""
+    response = live_client.get("/health")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "ok"
+    assert data["service"] == "recoverx-control-plane"

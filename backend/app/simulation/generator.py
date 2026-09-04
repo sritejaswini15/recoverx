@@ -415,6 +415,7 @@ def generate_synthetic_dataset(
     # Generate remaining cases (up to case_count)
     amounts = [2400, 4999, 7200, 12000, 18000, 25000, 42500, 68000, 120000]
     event_types = ["PAYMENT_FAILURE", "SUBSCRIPTION_HALTED", "INVOICE_OVERDUE", "CHECKOUT_ABANDONED"]
+    pending_experiment_results: list[ExperimentResult] = []
 
     for index in range(2, case_count):
         customer = customers[index % len(customers)]
@@ -556,16 +557,23 @@ def generate_synthetic_dataset(
 
         # Record A/B test variant assignment
         variant = rng.choice(["Variant A", "Variant B"])
-        exp_res = ExperimentResult(
-            id=str(uuid4()),
-            experiment_id=exp.id,
-            case_id=case.id,
-            variant=variant,
-            outcome=status if status in ("RECOVERED", "STOPPED", "ESCALATED") else None,
-            revenue=recovered_amount,
+        pending_experiment_results.append(
+            ExperimentResult(
+                id=str(uuid4()),
+                experiment_id=exp.id,
+                case_id=case.id,
+                variant=variant,
+                outcome=status if status in ("RECOVERED", "STOPPED", "ESCALATED") else None,
+                revenue=recovered_amount,
+            )
         )
-        session.add(exp_res)
 
+    # Flush all RecoveryCases and related core records before inserting dependent ExperimentResults
+    session.flush()
+
+    # Persist ExperimentResults now that RecoveryCases are guaranteed to be present in DB
+    for exp_res in pending_experiment_results:
+        session.add(exp_res)
     session.flush()
 
     # Log master seed audit

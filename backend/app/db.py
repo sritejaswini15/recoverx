@@ -284,6 +284,7 @@ class RecoveryCase(Base):
     communications: Mapped[list["Communication"]] = relationship(back_populates="case", cascade="all, delete-orphan")
     promises: Mapped[list["PromiseToPay"]] = relationship(back_populates="case", cascade="all, delete-orphan")
     escalation: Mapped["Escalation"] = relationship(back_populates="case", uselist=False, cascade="all, delete-orphan")
+    experiment_results: Mapped[list["ExperimentResult"]] = relationship(back_populates="case", cascade="all, delete-orphan")
 
 
 class AgentDecision(Base):
@@ -435,6 +436,8 @@ class ExperimentResult(Base):
     outcome: Mapped[str | None] = mapped_column(String(64), nullable=True)  # RECOVERED, EXPIRED, STOPPED
     revenue: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    case: Mapped["RecoveryCase"] = relationship(back_populates="experiment_results")
 
 
 # Engine & Session

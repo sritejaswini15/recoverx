@@ -142,31 +142,44 @@ Metrics reported:
 
 ---
 
-## Deployment (Render)
+---
 
-`render.yaml` defines all Render services: FastAPI backend, Next.js frontend, PostgreSQL, Redis, and an optional background worker.
+## Deployment (Railway & Render)
 
-### Steps
+RecoverX is containerized and deployable to both **Railway** and **Render**.
 
-1. Push to GitHub
-2. Create a **Render Blueprint** from this repository
-3. Set the following secret environment variables in Render:
-   - `AUTH_SECRET` — a strong random secret (min 32 chars)
-   - `RAZORPAY_WEBHOOK_SECRET` — your Razorpay webhook secret
-   - `BOOTSTRAP_ADMIN_EMAIL` — initial admin email
-   - `BOOTSTRAP_ADMIN_PASSWORD` — initial admin password (min 16 chars)
-4. Set URL environment variables (after first deploy, Render assigns URLs):
-   - `CORS_ORIGINS` → `https://<your-frontend>.onrender.com`
-   - `NEXT_PUBLIC_API_URL` → `https://<your-api>.onrender.com`
-5. Optionally set Razorpay live credentials:
-   - `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`
-   - `PAYMENT_PROVIDER=razorpay`
+### Railway Deployment (Recommended)
 
-Without live credentials the system uses `SimulatedRazorpayProvider` automatically.
+1. Create a new project in [Railway](https://railway.app/).
+2. Add **PostgreSQL** (`recoverx-postgres`) and **Redis** services. Railway automatically provides `DATABASE_URL` and `REDIS_URL`.
+3. Add **GitHub Repo Service** pointing to `sritejaswini15/recoverx`:
+   - **Backend API**:
+     - Root Directory: `backend`
+     - Dockerfile is automatically detected
+     - Variables:
+       - `ENVIRONMENT=production`
+       - `SEED_DEMO_DATA=true` (for automatic 1,000 customers & 500 cases seeding on initial boot)
+       - `AUTH_REQUIRED=true`
+       - `PAYMENT_PROVIDER=simulated`
+       - `LLM_PROVIDER=deterministic`
+       - `TEMPORAL_ENABLED=false`
+       - `AUTH_SECRET=<32+ random characters>`
+       - `RAZORPAY_WEBHOOK_SECRET=<32+ characters or recoverx_webhook_secret_key_2026>`
+       - `BOOTSTRAP_ADMIN_EMAIL=admin@yourdomain.com`
+       - `BOOTSTRAP_ADMIN_PASSWORD=<16+ char password>`
+       - `BOOTSTRAP_RAZORPAY_ACCOUNT_ID=acct_railway_demo`
+       - `CORS_ORIGINS=https://<your-frontend>.up.railway.app`
+   - **Frontend UI**:
+     - Root Directory: `frontend`
+     - Dockerfile is automatically detected
+     - Variables:
+       - `NEXT_PUBLIC_API_URL=https://<your-api>.up.railway.app`
+4. Both services run in the foreground and bind to `PORT` supplied by Railway.
+5. Migrations run automatically on startup via `alembic upgrade head`.
 
-### Database Migrations
+### Render Deployment
 
-Migrations run automatically on startup via Alembic (`alembic upgrade head`). For production, migrations are run as a pre-deploy command in the Dockerfile or Render startup command.
+`render.yaml` defines all Render services: FastAPI backend, Next.js frontend, managed PostgreSQL, Redis/Key-Value, and daily cleanup cron. Create a Render Blueprint from this repository and supply required `sync: false` secrets in settings.
 
 ---
 
